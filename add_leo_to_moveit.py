@@ -3,60 +3,53 @@
 import sys
 import rospy
 import moveit_commander
-import subprocess
-from moveit_msgs.msg import CollisionObject
+from moveit_commander.robot_trajectory import RobotTrajectory
+from moveit_commander.planning_scene_interface import PlanningSceneInterface
+from moveit_commander.robot_trajectory import RobotTrajectory
 from geometry_msgs.msg import PoseStamped
-from shape_msgs.msg import Mesh, MeshTriangle
-from shape_msgs.msg import SolidPrimitive
-from trajectory_msgs.msg import JointTrajectory
+from moveit_commander import PlanningSceneInterface
 import os
 
-# Initialize MoveIt
-rospy.init_node('add_leo_rover_to_moveit', anonymous=True)
+# Initialize MoveIt and rospy
+rospy.init_node('add_leo_to_moveit', anonymous=True)
 moveit_commander.roscpp_initialize(sys.argv)
-scene = moveit_commander.PlanningSceneInterface()
-rospy.sleep(2)  # Allow some time for the scene to initialize
 
-# Get Leo Rover URDF mesh path
-leo_mesh_path = os.popen("rospack find leo_description").read().strip() + "/meshes/leo_body.stl"
+# Initialize Planning Scene Interface
+scene = PlanningSceneInterface()
+rospy.sleep(2)  # Give some time for scene to initialize
 
-# Define Leo Rover as a collision object
-rover = CollisionObject()
-rover.id = "leo_rover"
-rover.header.frame_id = "world"  # Set the reference frame (or use "base_link")
+# Get the path to the Leo Rover URDF
+leo_urdf_path = os.popen("rospack find leo_description").read().strip() + "/urdf/leo_rover.urdf.xacro"
 
-# Load the rover mesh
-rover_mesh = Mesh()
-rover_mesh.triangles = []
-rover_mesh.vertices = []
+# Create a new collision object for the Leo Rover
+rover = moveit_commander.PlanningSceneInterface()
+collision_object = moveit_commander.robot_trajectory.CollisionObject()
 
-# Read mesh file
-with open(leo_mesh_path, 'r') as mesh_file:
-    for line in mesh_file:
-        if line.startswith('v '):  # Vertex line
-            _, x, y, z = line.split()
-            rover_mesh.vertices.append([float(x), float(y), float(z)])
-        elif line.startswith('f '):  # Face line
-            _, v1, v2, v3 = line.split()
-            rover_mesh.triangles.append([int(v1) - 1, int(v2) - 1, int(v3) - 1])
+# Set the frame of reference (usually 'world' or base_link depending on your setup)
+collision_object.header.frame_id = "world"  # You can use 'base_link' if you want the rover in relation to the arm.
 
-# Set the rover’s position
-rover_pose = PoseStamped()
-rover_pose.header.frame_id = "world"
-rover_pose.pose.position.x = 0.5  # Adjust based on where you want the rover
-rover_pose.pose.position.y = 0.0
-rover_pose.pose.position.z = 0.1  # Keep it above ground
-rover_pose.pose.orientation.w = 1.0
+# Set the name of the object (it should be unique)
+collision_object.id = "leo_rover"
 
-# Add the rover mesh to the collision object
-rover.meshes.append(rover_mesh)
-rover.mesh_poses.append(rover_pose.pose)
-rover.operation = CollisionObject.ADD
+# Add the rover model (mesh or URDF) to the collision object
+collision_object.meshes = [leo_urdf_path]  # Load the URDF model path as a mesh
 
-# Publish to MoveIt’s planning scene
-scene.add_object(rover)
+# Create a pose for the rover and place it in the world
+pose = PoseStamped()
+pose.header.frame_id = "world"
+pose.pose.position.x = 0.5  # Adjust position relative to the arm
+pose.pose.position.y = 0.0
+pose.pose.position.z = 0.1  # Place above the ground
+pose.pose.orientation.w = 1.0  # No rotation
+
+# Add the pose and mesh to the collision object
+collision_object.primitive_poses = [pose.pose]
+collision_object.operation = collision_object.ADD
+
+# Add the collision object to the planning scene
+scene.add_object(collision_object)
 rospy.sleep(2)
 
-print("Leo Rover added to MoveIt planning scene!")
+print("Leo Rover added to the MoveIt planning scene!")
 
 moveit_commander.roscpp_shutdown()
